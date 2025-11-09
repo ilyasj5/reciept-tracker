@@ -19,11 +19,16 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check if gcloud is installed
+# Check if gcloud is installed (warning only)
 if ! command -v gcloud &> /dev/null; then
-    echo "❌ Google Cloud SDK is not installed. Please install it from:"
-    echo "   https://cloud.google.com/sdk/docs/install"
-    exit 1
+    echo "⚠️  Warning: gcloud not found in PATH. If you have it installed, you may need to:"
+    echo "   - Add gcloud to your PATH"
+    echo "   - Run: source ~/.bashrc or source ~/.zshrc"
+    echo "   - Or install from: https://cloud.google.com/sdk/docs/install"
+    echo ""
+    echo "Continuing setup..."
+else
+    echo "✓ Google Cloud SDK found"
 fi
 
 # Check if Firebase CLI is installed

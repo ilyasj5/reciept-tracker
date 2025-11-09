@@ -1,0 +1,8 @@
+functions-framework==3.*
+google-cloud-vision==3.4.5
+google-cloud-firestore==2.13.1
+google-cloud-storage==2.14.0
+vertexai==1.38.1
+sendgrid==6.11.0
+python-dateutil==2.8.2
+Pillow==10.1.0

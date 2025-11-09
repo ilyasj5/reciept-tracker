@@ -1,0 +1,101 @@
+steps:
+  # Install frontend dependencies
+  - name: 'node:18'
+    id: 'install-frontend-deps'
+    entrypoint: 'npm'
+    args: ['install']
+    dir: 'frontend'
+
+  # Build frontend
+  - name: 'node:18'
+    id: 'build-frontend'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    dir: 'frontend'
+    waitFor: ['install-frontend-deps']
+
+  # Deploy to Firebase Hosting
+  - name: 'gcr.io/cloud-builders/firebase'
+    id: 'deploy-hosting'
+    args: ['deploy', '--only', 'hosting']
+    waitFor: ['build-frontend']
+
+  # Deploy Firestore rules and indexes
+  - name: 'gcr.io/cloud-builders/firebase'
+    id: 'deploy-firestore'
+    args: ['deploy', '--only', 'firestore']
+
+  # Deploy Storage rules
+  - name: 'gcr.io/cloud-builders/firebase'
+    id: 'deploy-storage'
+    args: ['deploy', '--only', 'storage']
+
+  # Deploy Cloud Functions - Receipt Processing
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-receipt-function'
+    args:
+      - 'functions'
+      - 'deploy'
+      - 'process_receipt'
+      - '--runtime=python311'
+      - '--trigger-http'
+      - '--allow-unauthenticated'
+      - '--region=us-central1'
+      - '--entry-point=process_receipt'
+      - '--set-env-vars=GCP_PROJECT=${PROJECT_ID},GCP_REGION=us-central1'
+    dir: 'backend/functions'
+
+  # Deploy Cloud Functions - Storage Trigger
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-storage-trigger'
+    args:
+      - 'functions'
+      - 'deploy'
+      - 'on_receipt_upload'
+      - '--runtime=python311'
+      - '--trigger-event=google.storage.object.finalize'
+      - '--trigger-resource=${PROJECT_ID}.appspot.com'
+      - '--region=us-central1'
+      - '--entry-point=on_receipt_upload'
+      - '--set-env-vars=GCP_PROJECT=${PROJECT_ID},GCP_REGION=us-central1'
+    dir: 'backend/functions'
+
+  # Deploy Cloud Functions - Weekly Email
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-email-function'
+    args:
+      - 'functions'
+      - 'deploy'
+      - 'send_weekly_summary'
+      - '--runtime=python311'
+      - '--trigger-http'
+      - '--allow-unauthenticated'
+      - '--region=us-central1'
+      - '--entry-point=send_weekly_summary'
+      - '--set-env-vars=SENDGRID_API_KEY=${_SENDGRID_API_KEY}'
+    dir: 'backend/email-service'
+
+  # Set up Cloud Scheduler job for weekly emails
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'setup-scheduler'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud scheduler jobs describe weekly-expense-summary --location=us-central1 || \
+        gcloud scheduler jobs create http weekly-expense-summary \
+          --location=us-central1 \
+          --schedule="0 9 * * 1" \
+          --uri="https://us-central1-${PROJECT_ID}.cloudfunctions.net/send_weekly_summary" \
+          --http-method=GET \
+          --time-zone="America/New_York" \
+          --description="Send weekly expense summaries every Monday at 9 AM"
+    waitFor: ['deploy-email-function']
+
+timeout: '1800s'
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'
+
+substitutions:
+  _SENDGRID_API_KEY: 'REPLACE_WITH_YOUR_SENDGRID_API_KEY'
